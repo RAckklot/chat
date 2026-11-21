@@ -5,6 +5,7 @@ on:
     branches: [soci-r1-fuse-ci]
     paths:
       - '.github/workflows/soci-r1.yml'
+      - 'soci-r1/**'
   workflow_dispatch:
 
 permissions:
