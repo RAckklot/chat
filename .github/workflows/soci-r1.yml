@@ -1,0 +1,38 @@
+name: SOCI R1 native Linux capability probe
+
+on:
+  push:
+    branches: [soci-r1-fuse-ci]
+    paths:
+      - '.github/workflows/soci-r1.yml'
+      - 'soci-r1/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe real FUSE and network namespace capability
+        shell: bash
+        run: |
+          set -euo pipefail
+          uname -a
+          id
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fuse3 kmod iproute2
+          sudo modprobe fuse || true
+          if [ ! -c /dev/fuse ]; then sudo mknod -m 666 /dev/fuse c 10 229; fi
+          ls -l /dev/fuse
+          sudo bash -c 'exec 3<>/dev/fuse'
+          sudo modprobe sch_netem || true
+          sudo unshare --net -- bash -euc '
+            ip link set lo up
+            tc qdisc add dev lo root netem delay 1ms rate 100mbit
+            tc qdisc show dev lo
+          '
+          echo "SOCI_R1_FUSE_AND_NETEM_PROBE_PASS"
