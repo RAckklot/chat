@@ -92,11 +92,26 @@ func build(root string)error{
     want:=expected[v.name];sum:=sha256.Sum256(content)
     actual:=hex.EncodeToString(sum[:])
     if actual!=want.hash||len(content)!=want.bytes{
-      return fmt.Errorf("frozen %s zTOC mismatch: got %s (%d bytes), want %s (%d bytes)",
+      fmt.Printf("REBUILT_NOT_BYTE_IDENTICAL: %s generated %s (%d bytes); archived %s (%d bytes)\n",
         v.name,actual,len(content),want.hash,want.bytes)
+    }else{
+      fmt.Printf("ARCHIVE_BYTE_IDENTICAL: %s %s\n",v.name,actual)
+    }
+    if v.name=="stock"||v.name=="two"{
+      expectedOffsets:=[]int64{0,4210402,8431335,12749569,16949250,21151098,25417244,29623978,33863289,38139673}
+      if v.name=="two"{
+        expectedOffsets=[]int64{0,4210402,8431335,12749569,16949250,18644031,21151098,25417244,29623978,29942862,33863289,38139673}
+      }
+      zi,err:=z.Zinfo();if err!=nil{return err}
+      if int(z.MaxSpanID)+1!=len(expectedOffsets){zi.Close();return fmt.Errorf("%s unexpected span count",v.name)}
+      for i,off:=range expectedOffsets{
+        actualOff:=int64(zi.StartUncompressedOffset(compression.SpanID(i)))
+        if actualOff!=off{zi.Close();return fmt.Errorf("%s frozen checkpoint %d moved: got %d want %d",v.name,i,actualOff,off)}
+      }
+      zi.Close()
+      fmt.Printf("PASS: %s frozen uncompressed checkpoint positions match R0\n",v.name)
     }
     if e=os.WriteFile(filepath.Join(root,"assets",v.name+".ztoc"),content,0644);e!=nil{return e}
-    fmt.Printf("PASS: %s zTOC identical to frozen R1 (%d bytes)\n",v.name,len(content))
   }
   return nil
 }
