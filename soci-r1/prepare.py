@@ -39,9 +39,16 @@ def download():
         dst=FIXTURE/dg
         if dst.exists() and digest(dst.read_bytes())==dg:
             return dst.read_bytes()
-        req=Request("https://registry-1.docker.io/v2/library/python/"+kind+"/"+dg,
-                    headers={"Authorization":"Bearer "+token,"Accept":MEDIA})
-        with urlopen(req, timeout=150) as r: data=r.read()
+        headers={"Authorization":"Bearer "+token}
+        if kind=="manifests": headers["Accept"]=MEDIA
+        req=Request("https://registry-1.docker.io/v2/library/python/"+kind+"/"+dg,headers=headers)
+        try:
+            with urlopen(req, timeout=150) as r: data=r.read()
+        except Exception as e:
+            from urllib.error import HTTPError
+            if isinstance(e,HTTPError):
+                raise RuntimeError(f"Docker registry {kind}/{dg}: HTTP {e.code}: {e.read(350)!r}") from e
+            raise
         if digest(data)!=dg: raise ValueError("original OCI digest mismatch: "+dg)
         dst.write_bytes(data)
         return data
