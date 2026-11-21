@@ -94,7 +94,7 @@ def make_nested():
     if len(starts)!=666: raise RuntimeError("changed DEFLATE legal checkpoint count")
     if not all(x in starts for x in REFINED_STARTS): raise RuntimeError("frozen checkpoints missing")
     chosen=[starts[x] for x in REFINED_STARTS]
-    (BASE/"nested.zinfo").write_bytes(struct.pack("<iq",len(chosen)-1,4<<20)+b"".join(p[0] for p in chosen))
+    (BASE/"nested.zinfo").write_bytes(struct.pack("<iq",len(chosen),4<<20)+b"".join(p[0] for p in chosen))
     boundaries=[x[1] for x in chosen]+[len(layer)]
     digests=[]
     for i,(_,c,bits) in enumerate(chosen):
