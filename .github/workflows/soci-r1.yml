@@ -1,38 +1,76 @@
-name: SOCI R1 native Linux capability probe
+name: SOCI R1 real FUSE cold-start pilot
 
 on:
   push:
     branches: [soci-r1-fuse-ci]
     paths:
       - '.github/workflows/soci-r1.yml'
-      - 'soci-r1/**'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: soci-r1-native-pilot
+  cancel-in-progress: true
+
 jobs:
-  probe:
+  real-cold-start:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@v4
-      - name: Probe real FUSE and network namespace capability
+      - name: Install native Linux and container runtime prerequisites
         shell: bash
         run: |
           set -euo pipefail
-          uname -a
-          id
           sudo apt-get update -qq
-          sudo apt-get install -y -qq fuse3 kmod iproute2
+          sudo apt-get install -y -qq fuse3 kmod iproute2 runc build-essential zlib1g-dev python3
           sudo modprobe fuse || true
           if [ ! -c /dev/fuse ]; then sudo mknod -m 666 /dev/fuse c 10 229; fi
-          ls -l /dev/fuse
           sudo bash -c 'exec 3<>/dev/fuse'
           sudo modprobe sch_netem || true
-          sudo unshare --net -- bash -euc '
-            ip link set lo up
-            tc qdisc add dev lo root netem delay 1ms rate 100mbit
-            tc qdisc show dev lo
-          '
-          echo "SOCI_R1_FUSE_AND_NETEM_PROBE_PASS"
+          sudo unshare --net -- bash -euc 'ip link set lo up; tc qdisc add dev lo root netem delay 1ms rate 100mbit'
+          curl -fsSL --retry 3 https://github.com/containerd/containerd/releases/download/v2.2.9/containerd-2.2.9-linux-amd64.tar.gz -o /tmp/containerd.tar.gz
+          sudo tar -C /usr/local -xzf /tmp/containerd.tar.gz
+          curl -fsSL --retry 3 https://github.com/awslabs/soci-snapshotter/releases/download/v0.16.1/soci-snapshotter-0.16.1-linux-amd64.tar.gz -o /tmp/soci.tar.gz
+          sudo tar -C /usr/local/bin -xzf /tmp/soci.tar.gz soci soci-snapshotter-grpc
+          containerd --version
+          soci-snapshotter-grpc --version
+          runc --version
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.0'
+          cache: false
+      - name: Build pinned official source and reconstruct exact R0 zTOCs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --branch v0.16.1 https://github.com/awslabs/soci-snapshotter.git /tmp/soci-v0.16.1
+          mkdir -p /tmp/soci-v0.16.1/ztoc/out
+          cp "$(gcc -print-file-name=libz.a)" /tmp/soci-v0.16.1/ztoc/out/libz.a
+          gcc -O2 -fPIC -shared -o soci-r1/libzinfo.so /tmp/soci-v0.16.1/ztoc/compression/gzip_zinfo.c -lz
+          python3 soci-r1/prepare.py download
+          python3 soci-r1/prepare.py nested
+          cp soci-r1/native.go /tmp/soci-v0.16.1/r1_client.go
+          (cd /tmp/soci-v0.16.1 && go build -trimpath -ldflags="-s -w" -o "$GITHUB_WORKSPACE/soci-r1/r1-client" r1_client.go)
+          soci-r1/r1-client build-indexes "$GITHUB_WORKSPACE/soci-r1"
+          python3 soci-r1/prepare.py assemble
+          (cd soci-r1 && python3 -m compileall -q prepare.py trial.py pilot.py)
+          chmod +x soci-r1/r1-client soci-r1/trial.sh
+      - name: One genuine SOCI cold start (fail closed)
+        working-directory: soci-r1
+        run: sudo python3 pilot.py --single
+      - name: Five paired blocks under both network conditions
+        working-directory: soci-r1
+        run: sudo python3 pilot.py --full
+      - name: Upload reproducibility evidence even if a step failed
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soci-r1-native-evidence
+          path: |
+            soci-r1/ci-results/
+            soci-r1/fixture/modes.json
+          retention-days: 14
+          if-no-files-found: warn
