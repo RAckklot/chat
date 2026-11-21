@@ -9,8 +9,17 @@ policy=$4
 ip link set lo up
 tc qdisc replace dev lo root handle 1: netem limit 10000 delay "${delay}ms" rate 100mbit
 tc -s qdisc show dev lo > "$out/qdisc-before.txt"
+# Preserve the real resolv.conf target across the private /run tmpfs. Ubuntu hosts
+# commonly point /etc/resolv.conf into /run/systemd/resolve.
+r1_resolver_target=$(readlink -f /etc/resolv.conf)
+cp /etc/resolv.conf /tmp/r1-resolv-conf
 mount -t tmpfs tmpfs /run
+if [[ "$r1_resolver_target" == /run/* ]]; then
+  mkdir -p "$(dirname "$r1_resolver_target")"
+  cp /tmp/r1-resolv-conf "$r1_resolver_target"
+fi
 mkdir -p /run/r1
+test -r /etc/resolv.conf
 export XDG_RUNTIME_DIR=/run/r1
 export XDG_CACHE_HOME=/run/r1
 export HOME=/root
