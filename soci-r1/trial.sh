@@ -11,6 +11,9 @@ tc qdisc replace dev lo root handle 1: netem limit 10000 delay "${delay}ms" rate
 tc -s qdisc show dev lo > "$out/qdisc-before.txt"
 mount -t tmpfs tmpfs /run
 mkdir -p /run/r1
+export XDG_RUNTIME_DIR=/run/r1
+export XDG_CACHE_HOME=/run/r1
+export HOME=/root
 cat > "$out/containerd.toml" <<'TOML'
 version = 3
 disabled_plugins = ["io.containerd.grpc.v1.cri","io.containerd.cri.v1.runtime","io.containerd.cri.v1.images"]
