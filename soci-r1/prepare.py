@@ -141,9 +141,12 @@ def assemble():
                 "com.amazon.soci.span-size":str(span)}
             register(data,d["digest"],"blobs")
             layers.append(d)
-        raw=encode({"schemaVersion":2,"mediaType":MEDIA,"config":empty,"layers":layers,
-                   "subject":desc(manifest,MEDIA),
-                   "annotations":{"com.amazon.soci.build-tool-identifier":"soci-span-study"}})
+        draft=encode({"schemaVersion":2,"mediaType":MEDIA,"config":empty,"layers":layers,
+                      "subject":desc(manifest,MEDIA),
+                      "annotations":{"com.amazon.soci.build-tool-identifier":"soci-span-study"}})
+        (ASSETS/"index-draft.json").write_bytes(draft)
+        import subprocess
+        raw=subprocess.check_output([str(BASE/"r1-client"),"canonical-index",str(ASSETS/"index-draft.json")])
         dg=digest(raw)
         register(raw,dg,"manifests")
         register(raw,dg,"blobs")
