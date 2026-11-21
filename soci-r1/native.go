@@ -15,6 +15,7 @@ import (
   "time"
 
   "github.com/awslabs/soci-snapshotter/fs/source"
+  "github.com/awslabs/soci-snapshotter/soci"
   "github.com/awslabs/soci-snapshotter/ztoc"
   "github.com/awslabs/soci-snapshotter/ztoc/compression"
   ct "github.com/containerd/containerd/v2/client"
@@ -121,6 +122,13 @@ func main(){
     case len(os.Args)==3 && os.Args[1]=="serve": e=serve(os.Args[2])
     case len(os.Args)==5 && os.Args[1]=="pull": e=pull(os.Args[2],os.Args[3],os.Args[4])
     case len(os.Args)==3 && os.Args[1]=="build-indexes": e=build(os.Args[2])
+    case len(os.Args)==3 && os.Args[1]=="canonical-index":
+      var b []byte
+      b,e=os.ReadFile(os.Args[2]);if e!=nil{break}
+      var index soci.Index
+      e=soci.UnmarshalIndex(b,&index);if e!=nil{break}
+      b,e=soci.MarshalIndex(&index);if e!=nil{break}
+      _,e=os.Stdout.Write(b)
     default: fmt.Fprintln(os.Stderr,"usage: r1-client serve DIR | pull SOCK IMAGE INDEX | build-indexes ROOT");os.Exit(2)
   }
   if e!=nil{fmt.Fprintln(os.Stderr,e);os.Exit(1)}
