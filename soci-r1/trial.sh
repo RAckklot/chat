@@ -49,12 +49,15 @@ soci_pid=$!
 containerd -a /run/r1/ct.sock --root "$tmp/ct" --state /run/r1/state -c "$out/containerd.toml" > "$out/containerd.log" 2>&1 &
 ct_pid=$!
 ready=0
-for ((i=0; i<150; ++i)); do
-  if [[ -S /run/r1/soci.sock && -S /run/r1/ct.sock ]] && ctr -a /run/r1/ct.sock plugins ls 2>/dev/null | grep -Eq 'snapshotter\.v1[[:space:]]+soci[[:space:]].*[[:space:]]ok[[:space:]]*$'; then
-    ready=1;break
+for ((i=0; i<300; ++i)); do
+  if [[ -S /run/r1/soci.sock && -S /run/r1/ct.sock ]]; then
+    ctr -a /run/r1/ct.sock plugins ls > "$out/plugins-last.txt" 2>"$out/plugins-last.err" || true
+    if grep -Eq 'snapshotter\.v1[[:space:]]+soci[[:space:]]+.*ok' "$out/plugins-last.txt"; then
+      ready=1;break
+    fi
   fi
   sleep .1
 done
-[[ $ready == 1 ]] || { echo 'runtime or SOCI plugin did not become ready';exit 2; }
+[[ $ready == 1 ]] || { echo 'runtime or SOCI plugin did not become ready'; cat "$out/plugins-last.txt" "$out/plugins-last.err" 2>/dev/null || true;exit 2; }
 python3 trial.py "$out" "$policy" "$soci_pid" "$ct_pid"
 tc -s qdisc show dev lo > "$out/qdisc-after.txt"
